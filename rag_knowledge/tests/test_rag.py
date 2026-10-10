@@ -1,4 +1,4 @@
-"""Hermetic test suite for PR 1a core RAG architecture."""
+"""Hermetic test suite for rag_knowledge."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
@@ -58,7 +58,7 @@ async def test_rag_service_fallback_and_gemini():
 
 
 def test_ingest_privacy_guards():
-    docs = [{"id": "user_1", "title": "User One", "summary": "User One", "content": "User One is registered."}]
+    docs = [{"id": "student_U1", "title": "User One", "summary": "User One", "content": "User One is enrolled."}]
     assert_no_privacy_leaks(docs)
     assert "@" not in docs[0]["content"]
 
@@ -67,28 +67,59 @@ def test_ingest_privacy_guards():
         assert_no_privacy_leaks(leaky_doc)
 
 
-def test_pdf_and_word_dispatch_ingestion(tmp_path):
-    import docx
+def test_multi_format_ingestion(tmp_path):
     from rag_knowledge.ingestion import (
-        load_pdf_documents,
-        load_word_documents,
+        load_json_documents,
+        load_generic_tabular_dataset,
+        load_text_or_markdown,
         load_source_documents,
     )
 
-    doc_file = tmp_path / "handbook.docx"
-    doc = docx.Document()
-    doc.add_heading("Society Rules", level=1)
-    doc.add_paragraph("Welcome to the handbook.")
-    doc.save(str(doc_file))
+    json_file = tmp_path / "faq.json"
+    json_file.write_text('[{"title": "FAQ 1", "answer": "Answer 1"}]', encoding="utf-8")
+    assert len(load_json_documents(json_file)) == 1
 
-    assert len(load_word_documents(doc_file)) >= 1
+    csv_file = tmp_path / "data.csv"
+    csv_file.write_text("title,content\nItem 1,Detail 1", encoding="utf-8")
+    assert len(load_generic_tabular_dataset(csv_file)) >= 1
+
+    md_file = tmp_path / "doc.md"
+    md_file.write_text("# Section 1\nContent 1\n# Section 2\nContent 2", encoding="utf-8")
+    assert len(load_text_or_markdown(md_file)) == 2
+
+    from rag_knowledge.ingestion import load_pdf_documents
+    with patch("pypdf.PdfReader") as mock_pdf:
+        mock_page = MagicMock()
+        mock_page.extract_text.return_value = "Header\nDescription"
+        mock_pdf.return_value.pages = [mock_page]
+        pdf_file = tmp_path / "doc.pdf"
+        pdf_file.write_bytes(b"%PDF-1.4")
+        assert len(load_pdf_documents(pdf_file)) == 1
 
     docs = load_source_documents(tmp_path)
-    assert len(docs) >= 1
+    assert len(docs) >= 4
 
 
+def test_separate_vision_and_text_api_keys(monkeypatch):
+    from rag_knowledge.ingestion.ingest import get_vision_api_key, get_vision_model
+    from rag_knowledge.clients.gemini_client import GeminiRAGClient
 
-def test_gemini_client_configuration_checks():
+    # Set distinct keys for vision and text
+    monkeypatch.setenv("GEMINI_API_KEY", "general_key")
+    monkeypatch.setenv("GEMINI_TEXT_API_KEY", "dedicated_text_key")
+    monkeypatch.setenv("GEMINI_VISION_API_KEY", "dedicated_vision_key")
+    monkeypatch.setenv("GEMINI_VISION_MODEL", "gemini-vision-custom")
+
+    # Text client uses text key
+    client = GeminiRAGClient()
+    assert client.api_key == "dedicated_text_key"
+
+    # Vision extractor uses vision key and vision model
+    assert get_vision_api_key() == "dedicated_vision_key"
+    assert get_vision_model() == "gemini-vision-custom"
+
+
+def test_gemini_client_configuration_checks(monkeypatch):
     """Test that is_configured requires BOTH api_key and model."""
     # Empty key, model present -> not configured
     c1 = GeminiRAGClient(api_key="", model="gemini-flash")
@@ -109,17 +140,18 @@ def test_build_context_string_includes_source_and_page():
     mock_store.search_text.return_value = [
         {
             "id": "doc_1",
-            "title": "Club Handbook",
-            "content": "Rules and guidelines.",
+            "title": "Annual Report",
+            "content": "Profit increased by 10%.",
             "score": 0.85,
-            "metadata": {"source": "handbook.md", "page": 1},
+            "metadata": {"source": "report_2025.pdf", "page": 4},
         }
     ]
     retriever = KnowledgeRetriever(store=mock_store)
-    ctx = retriever.build_context_string("rules")
-    assert "[Club Handbook]" in ctx
-    assert "Source: handbook.md" in ctx
-    assert "Rules and guidelines." in ctx
+    ctx = retriever.build_context_string("profit")
+    assert "[Annual Report]" in ctx
+    assert "Source: report_2025.pdf" in ctx
+    assert "Page: 4" in ctx
+    assert "Profit increased by 10%." in ctx
 
 
 def test_retriever_raises_retrieval_error_on_storage_failure():
@@ -140,21 +172,23 @@ async def test_service_query_with_sources_and_outage_handling():
     from rag_knowledge.retrieval.retriever import RetrievalError
 
     mock_retriever = MagicMock()
+    # Scenario A: Successful retrieval with source metadata
     mock_retriever.retrieve.return_value = [
         {
             "id": "ev_1",
-            "title": "Orientation 2026",
-            "summary": "Orientation is on 25 Oct.",
-            "content": "Orientation 2026 will start at 10am.",
+            "title": "Hackathon 2026",
+            "summary": "Hackathon is on 15 Nov.",
+            "content": "Hackathon 2026 will start at 9am.",
             "score": 0.9,
-            "metadata": {"source": "orientation.md", "page": 1},
+            "metadata": {"source": "events.pdf", "page": 2},
         }
     ]
     service = RAGService(retriever=mock_retriever, llm_client=GeminiRAGClient(api_key="", model=""))
-    answer, sources = await service.query_with_sources("When is orientation?")
-    assert "Orientation is on 25 Oct." in answer
-    assert sources == ["orientation.md (Page 1)"]
+    answer, sources = await service.query_with_sources("When is hackathon?")
+    assert "Hackathon is on 15 Nov." in answer
+    assert sources == ["events.pdf (Page 2)"]
 
+    # Scenario B: Outage raises RetrievalError in query_with_sources and returns friendly outage string in query
     mock_retriever.retrieve.side_effect = RetrievalError("Qdrant offline")
     with pytest.raises(RetrievalError):
         await service.query_with_sources("test")
@@ -165,7 +199,11 @@ async def test_service_query_with_sources_and_outage_handling():
 
 def test_max_tokens_warning_emitted():
     """Test that finish_reason == 'MAX_TOKENS' emits a warning."""
+    import warnings
+    from rag_knowledge.clients.gemini_client import GeminiRAGClient
+
     client = GeminiRAGClient(api_key="fake", model="gemini-flash")
+    # Simulate urllib response with finishReason == MAX_TOKENS
     fake_response_data = b'{"candidates": [{"finishReason": "MAX_TOKENS", "content": {"parts": [{"text": "Cut off answer"}]}}]}'
 
     mock_resp = MagicMock()
@@ -178,3 +216,5 @@ def test_max_tokens_warning_emitted():
             import asyncio
             ans = asyncio.run(client.generate_answer("query", "context"))
             assert ans == "Cut off answer"
+
+
