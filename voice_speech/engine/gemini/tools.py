@@ -139,12 +139,27 @@ async def fetch_news_summary(query: str) -> str:
 
 
 # Tool Declarations
+KNOWLEDGE_TOOL_DECLARATION = types.FunctionDeclaration(
+    name="query_knowledge_base",
+    description=(
+        "PRIMARY KNOWLEDGE RETRIEVAL TOOL (HIGHEST PRIORITY): Search and retrieve facts from the internal RAG knowledge base. "
+        "ALWAYS call this tool first for questions regarding K.I.E.T, college events, departments, clubs, recruitment processes, "
+        "campus policies, academic curriculum, syllabi, guidelines, faculty, or uploaded internal documents (PDFs, Word docs). "
+        "Always give preference to this tool over external news search."
+    ),
+    parameters=types.Schema(
+        type="OBJECT",
+        properties={"query": types.Schema(type="STRING", description="Detailed question or search query for the knowledge base")},
+        required=["query"],
+    ),
+)
+
 NEWS_TOOL_DECLARATION = types.FunctionDeclaration(
     name="get_latest_news",
     description=(
-        "Search real-time web news, current events, recent developments, facts, or live updates on any topic. "
-        "Call this tool whenever the user asks about current affairs, breaking news, recent events, "
-        "people, organizations, technology, culture, weather, statistics, or any topic requiring fresh or up-to-date information."
+        "EXTERNAL WEB NEWS TOOL (FALLBACK / GLOBAL ONLY): Search public global web news and external current events. "
+        "Only call this tool for general world affairs, global breaking news, or topics completely outside the institution and internal knowledge base. "
+        "DO NOT use this tool for questions about the college, campus, recruitment, policies, or internal documents."
     ),
     parameters=types.Schema(
         type="OBJECT",
@@ -180,26 +195,12 @@ OPEN_BROWSER_TOOL_DECLARATION = types.FunctionDeclaration(
     ),
 )
 
-KNOWLEDGE_TOOL_DECLARATION = types.FunctionDeclaration(
-    name="query_knowledge_base",
-    description=(
-        "Search and retrieve information from the indexed internal RAG knowledge base. "
-        "Use this tool whenever the user asks questions about institutional documents, recruitment processes, "
-        "curriculum, college policies, syllabi, guidelines, uploaded PDF/Word documents, or domain-specific facts."
-    ),
-    parameters=types.Schema(
-        type="OBJECT",
-        properties={"query": types.Schema(type="STRING", description="Detailed question or search query for the knowledge base")},
-        required=["query"],
-    ),
-)
-
 DEFAULT_TOOLS: List[types.Tool] = [
     types.Tool(function_declarations=[
+        KNOWLEDGE_TOOL_DECLARATION,
         NEWS_TOOL_DECLARATION,
         ORCHESTRATION_TOOL_DECLARATION,
         OPEN_BROWSER_TOOL_DECLARATION,
-        KNOWLEDGE_TOOL_DECLARATION,
     ])
 ]
 
