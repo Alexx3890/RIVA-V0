@@ -12,9 +12,6 @@ from orchestration.tools.builtin.web_tools import (
     web_search,
     fetch_url_content,
 )
-from orchestration.tools.builtin.rag_tools import (
-    query_knowledge_base,
-)
 
 __all__ = [
     "read_file",
@@ -25,5 +22,4 @@ __all__ = [
     "get_system_info",
     "web_search",
     "fetch_url_content",
-    "query_knowledge_base",
 ]
