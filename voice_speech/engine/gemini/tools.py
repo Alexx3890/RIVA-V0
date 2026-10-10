@@ -180,11 +180,26 @@ OPEN_BROWSER_TOOL_DECLARATION = types.FunctionDeclaration(
     ),
 )
 
+KNOWLEDGE_TOOL_DECLARATION = types.FunctionDeclaration(
+    name="query_knowledge_base",
+    description=(
+        "Search and retrieve information from the indexed internal RAG knowledge base. "
+        "Use this tool whenever the user asks questions about institutional documents, recruitment processes, "
+        "curriculum, college policies, syllabi, guidelines, uploaded PDF/Word documents, or domain-specific facts."
+    ),
+    parameters=types.Schema(
+        type="OBJECT",
+        properties={"query": types.Schema(type="STRING", description="Detailed question or search query for the knowledge base")},
+        required=["query"],
+    ),
+)
+
 DEFAULT_TOOLS: List[types.Tool] = [
     types.Tool(function_declarations=[
         NEWS_TOOL_DECLARATION,
         ORCHESTRATION_TOOL_DECLARATION,
         OPEN_BROWSER_TOOL_DECLARATION,
+        KNOWLEDGE_TOOL_DECLARATION,
     ])
 ]
 
@@ -192,6 +207,18 @@ DEFAULT_TOOLS: List[types.Tool] = [
 async def _handle_get_latest_news(args: Dict[str, Any]) -> str:
     query = str((args or {}).get("query", ""))
     return await fetch_news_summary(query)
+
+
+async def _handle_query_knowledge_base(args: Dict[str, Any]) -> str:
+    query = str((args or {}).get("query", "")).strip()
+    if not query:
+        return "Please provide a specific query to search in the knowledge base."
+    try:
+        from rag_knowledge.service import query_rag
+        return await query_rag(query)
+    except Exception as e:
+        logger.error(f"Error querying RAG knowledge base for '{query}': {e}", exc_info=True)
+        return f"Error retrieving information from knowledge base: {str(e)}"
 
 
 async def execute_orchestration_task(task: str) -> str:
@@ -271,6 +298,7 @@ TOOL_REGISTRY: Dict[str, Callable[[Dict[str, Any]], Awaitable[str]]] = {
     "get_latest_news": _handle_get_latest_news,
     "run_orchestration_task": _handle_run_orchestration_task,
     "open_website_in_browser": _handle_open_website_in_browser,
+    "query_knowledge_base": _handle_query_knowledge_base,
 }
 
 
