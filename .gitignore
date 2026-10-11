@@ -1,0 +1,61 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+*.pyd
+
+# C extensions
+*.so
+
+# Virtual environments
+.venv/
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Environment variables & secrets
+.env
+.env.*
+.env.local
+.env.*.local
+!.env.example
+!voice_speech/.env.example
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+chat.py
+
+# Logs & Databases
+*.log
+*.sqlite
+*.sqlite3
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.directory
+
+# Operating System
+.DS_Store
+Thumbs.db
+
+# RAG Knowledge Data Protection
+rag_knowledge/data/raw/*
+!rag_knowledge/data/raw/.gitkeep
+rag_knowledge/data/processed/
+/data/
+!voice_speech/engine/config/prompt_system/data/**
+!rag_knowledge/.env.example
+
